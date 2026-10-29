@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Просмотр экспорта Claude</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23c96442'/%3E%3Crect x='14' y='22' width='36' height='28' rx='4' fill='%23fff'/%3E%3Cpath d='M12 16h40v8H12z' fill='%23fbe9e2'/%3E%3Crect x='26' y='30' width='12' height='4' rx='2' fill='%23c96442'/%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#f6f5f1; --panel:#ffffff; --panel2:#efede7; --text:#1f1e1c; --muted:#6b6862;
@@ -108,6 +109,11 @@ details.block pre{white-space:pre-wrap}
 .artcard .t{flex:1;min-width:0}
 .artcard .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .artcard .t span{font-size:12px;color:var(--muted)}
+.dltable{border-collapse:collapse;width:100%;font-size:14px}
+.dltable th,.dltable td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top}
+.dltable th{font-size:12px;color:var(--muted);font-weight:600}
+a.btnlink{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;border-radius:8px;padding:4px 10px;font-size:13px}
+a.btnlink:hover{background:var(--accent2)}
 .kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:14px}
 .kv div:nth-child(odd){color:var(--muted)}
 .fileview pre{white-space:pre-wrap;max-height:70vh;overflow:auto}
@@ -125,6 +131,7 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
   #app.showing-main #side{display:none}
   #app:not(.showing-main) #main{display:none}
   .back{display:inline-block}
+  .dltable th:nth-child(2),.dltable td:nth-child(2){display:none}
   .view{padding:16px 16px 60px}
   header.top select{max-width:100%;flex:1}
 }
@@ -139,13 +146,14 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
   <button id="openBtn" class="primary">Открыть файл…</button>
   <button id="homeBtn" class="hidden" title="К списку архивов">Архивы</button>
   <button id="themeBtn" title="Сменить тему">Тема</button>
-  <input id="fileInput" type="file" accept=".json,.zip,application/json,application/zip" multiple class="hidden">
+  <input id="fileInput" type="file" accept=".json,.jsonl,.zip,application/json,application/zip" multiple class="hidden">
+  <input id="addInput" type="file" accept=".json,.jsonl,.zip,application/json,application/zip" multiple class="hidden">
 </header>
 
 <section id="welcome">
   <div id="drop" class="drop">
     <h2>Перетащите сюда архив экспорта</h2>
-    <p class="muted">Подходит ZIP-архив из письма целиком или отдельные JSON-файлы из него<br>(conversations.json, projects.json, users.json, memories.json).</p>
+    <p class="muted">Подходит JSON-файл из письма (со ссылками на архивы), скачанные по этим ссылкам ZIP-архивы<br>(можно выбрать сразу несколько) или отдельные JSON-файлы из них.</p>
     <button class="primary" id="openBtn2">Выбрать файл…</button>
     <p class="muted" style="font-size:13px;margin-bottom:0">Всё работает прямо в браузере, без интернета. Файлы никуда не отправляются.</p>
   </div>
@@ -162,8 +170,8 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
     <h3>Как получить экспорт</h3>
     <ol class="howto">
       <li>На claude.ai откройте <b>Настройки → Конфиденциальность → Экспортировать данные</b>.</li>
-      <li>Придёт письмо со ссылкой. Скачайте по ней ZIP-архив.</li>
-      <li>Откройте архив здесь: распаковывать его не нужно.</li>
+      <li>Придёт письмо с JSON-файлом. Откройте его здесь: появится список архивов с кнопками «Скачать».</li>
+      <li>Скачайте нужные архивы (ссылки действуют 24 часа) и добавьте их сюда же: распаковывать не нужно.</li>
     </ol>
   </div>
 </section>
@@ -171,6 +179,7 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
 <section id="app" class="hidden">
   <aside id="side">
     <div class="tabs" id="tabs">
+      <button data-tab="dl" class="hidden">Скачать архивы</button>
       <button data-tab="conv" class="active">Чаты</button>
       <button data-tab="proj">Проекты</button>
       <button data-tab="art">Артефакты</button>
@@ -401,23 +410,29 @@ const S = { sources:[], cur:null, tab:"conv", sel:new Set(), active:null, query:
 
 function asArray(x){ return Array.isArray(x)?x:(x && typeof x==="object" ? (Array.isArray(x.conversations)?x.conversations:Array.isArray(x.data)?x.data:Object.values(x)) : []); }
 
-function detectKind(name, json){
-  const n = name.toLowerCase().split("/").pop();
-  if (/conversation/.test(n)) return "conversations";
-  if (/project/.test(n)) return "projects";
-  if (/memor/.test(n)) return "memories";
-  if (/user/.test(n)) return "users";
-  const a = Array.isArray(json)?json:null;
-  if (a && a.length){
-    const f=a[0]||{};
-    if ("chat_messages" in f || "messages" in f) return "conversations";
-    if ("docs" in f || "prompt_template" in f) return "projects";
-    if ("email_address" in f || "full_name" in f) return "users";
-    if ("conversations_memory" in f) return "memories";
-  }
-  if (json && typeof json==="object" && !a && ("conversations_memory" in json || "project_memories" in json)) return "memories";
+function shapeKind(o){
+  if (!o || typeof o!=="object" || Array.isArray(o)) return null;
+  if (Array.isArray(o.data_files) && o.data_files.some(f=>f&&f.export_url)) return "manifest";
+  if ("chat_messages" in o) return "conversations";
+  if ("docs" in o || "prompt_template" in o) return "projects";
+  if ("conversations_memory" in o || "project_memories" in o) return "memories";
+  if ("email_address" in o || "full_name" in o) return "users";
   return null;
 }
+function detectKind(name, json){
+  const k = shapeKind(json) || (Array.isArray(json) && json.length ? shapeKind(json.find(x=>x&&typeof x==="object")) : null);
+  if (k) return k;
+  // поле messages встречается во многих форматах, поэтому опираемся на имя файла
+  const n = name.toLowerCase().split("/").pop();
+  const bad = Array.isArray(json) ? false : !(json && typeof json==="object");
+  if (bad) return null;
+  if (/^conversations?\b/.test(n) && Array.isArray(json)) return "conversations";
+  if (/^projects?\b/.test(n) && Array.isArray(json)) return "projects";
+  if (/^memor/.test(n)) return "memories";
+  if (/^users?\b/.test(n)) return "users";
+  return null;
+}
+function asList(json){ return Array.isArray(json)?json.filter(x=>x&&typeof x==="object"):(json&&typeof json==="object"?[json]:[]); }
 
 function blockText(b){
   if (b==null) return "";
@@ -499,22 +514,37 @@ function artifactsOf(conv){
 
 async function buildSource(name, files){
   // files: [{path, size, date, blob(), text()}]
-  const src = {id:"s"+Date.now()+Math.random().toString(36).slice(2,6), name, files, conversations:[], projects:[], users:[], memories:null, errors:[], convById:new Map()};
+  const src = {id:"s"+Date.now()+Math.random().toString(36).slice(2,6), name, files, conversations:[], projects:[], users:[], memories:null, manifest:null, errors:[], convById:new Map()};
+  const mems=[];
   for (const f of files){
     if (!/\.json$/i.test(f.path)) continue;
     const base=f.path.split("/").pop();
-    if (base.startsWith("._")) continue;
+    if (base.startsWith("._") || f.path.includes("__MACOSX/")) continue;
     busy("Читаю "+base+"…"); await tick();
     let json;
     try { json = JSON.parse(await f.text()); } catch(e){ src.errors.push(base+": не удалось прочитать JSON ("+e.message+")"); continue; }
     f.json=json;
     const kind = detectKind(f.path, json); f.kind=kind;
-    if (kind==="conversations") src.conversations.push(...asArray(json).map((c,i)=>normConv(c, src.conversations.length+i)));
-    else if (kind==="projects") src.projects.push(...asArray(json));
-    else if (kind==="users") src.users.push(...asArray(json));
-    else if (kind==="memories") src.memories = json;
+    if (kind==="manifest") src.manifest = json;
+    else if (kind==="conversations"){
+      const list = Array.isArray(json)?json:(Array.isArray(json.conversations)?json.conversations:[json]);
+      src.conversations.push(...list.filter(x=>x&&typeof x==="object").map((c,i)=>normConv(c, src.conversations.length+i)));
+    }
+    else if (kind==="projects") src.projects.push(...asList(json));
+    else if (kind==="users") src.users.push(...asList(json));
+    else if (kind==="memories") mems.push(...asList(json));
   }
+  if (mems.length) src.memories = mems;
+  // одинаковые чаты из разных частей экспорта не дублируем
+  const seen=new Map();
+  for (const c of src.conversations){ const prev=seen.get(c.id); if(!prev || c.messages.length>prev.messages.length) seen.set(c.id,c); }
+  src.conversations=[...seen.values()];
   for (const c of src.conversations) src.convById.set(c.id,c);
+  const pseen=new Map(); for (const p of src.projects) pseen.set(p.uuid||p.name||Math.random(), p); src.projects=[...pseen.values()];
+  if (!name || src.manifest){
+    if (src.manifest?.created_at) src.name = "Экспорт от "+fmtDate(src.manifest.created_at);
+    else src.name = "Экспорт";
+  }
   return src;
 }
 
@@ -522,33 +552,42 @@ async function buildSource(name, files){
 function wrapPlain(file, path){
   return {path: path||file.webkitRelativePath||file.name, size:file.size, date:new Date(file.lastModified||Date.now()), blob:async()=>file, text:async()=>file.text()};
 }
+const isZip = f => /\.zip$/i.test(f.name) || /zip/.test(f.type||"");
+// Все файлы, выбранные за один раз, открываются как один экспорт.
+// opts.into: добавить файлы к уже открытому экспорту.
 async function openFiles(fileList, opts={}){
-  const files=[...fileList]; if(!files.length) return;
+  let files=[...fileList]; if(!files.length) return;
+  const target = opts.into || null;
   try{
-    const zips=files.filter(f=>/\.zip$/i.test(f.name)||f.type.includes("zip"));
-    const others=files.filter(f=>!zips.includes(f));
-    let last=null;
-    for (const z of zips){
-      busy("Открываю архив "+z.name+"…"); await tick();
-      const entries = await readZip(z);
-      const src = await buildSource(z.name, entries);
-      src.origin=[z]; addSource(src); last=src;
+    if (target){
+      const fresh = files.filter(f=>!target.origin.some(o=>o.name===f.name && o.size===f.size));
+      if (!fresh.length){ toast("Эти файлы уже открыты."); return; }
+      files = [...target.origin, ...fresh];
     }
-    if (others.length){
-      const name = others.length===1?others[0].name:("JSON-файлы ("+others.length+")");
-      const src = await buildSource(name, others.map(f=>wrapPlain(f)));
-      src.origin=others; addSource(src); last=src;
+    const multi = files.length>1;
+    const entries=[];
+    for (const f of files){
+      if (isZip(f)){
+        busy("Открываю архив "+f.name+"…"); await tick();
+        try{
+          for (const e of await readZip(f)){ e.archive=f.name; if (multi) e.path=f.name+"/"+e.path; entries.push(e); }
+        }catch(err){ throw new Error(f.name+": "+err.message); }
+      } else entries.push(wrapPlain(f, f.name));
     }
+    const src = await buildSource(files.length===1?files[0].name:"", entries);
+    src.origin = files;
+    src.saveId = target?.saveId || null;
     unbusy();
-    if (last){
-      if (!opts.fromSaved && remember()) saveSource(last).catch(e=>console.warn(e));
-      if (last.errors.length) toast(last.errors.join("; "), 6000);
-      else if (!last.conversations.length && !last.projects.length) toast("В файле не нашлось чатов или проектов. Посмотрите вкладку «Файлы».", 5000);
-      selectSource(last.id);
-    }
+    if (target){ src.id=target.id; S.sources[S.sources.indexOf(target)]=src; renderSourceSel(); }
+    else { S.sources.push(src); renderSourceSel(); }
+    if (!opts.fromSaved && remember()) saveSource(src).catch(e=>console.warn(e));
+    if (src.errors.length) toast(src.errors.join("; "), 6000);
+    else if (target) toast("Добавлено файлов: "+(files.length-target.origin.length));
+    else if (!src.manifest && !src.conversations.length && !src.projects.length) toast("В файле не нашлось чатов или проектов. Посмотрите вкладку «Файлы».", 5000);
+    const gotChats = target && !target.conversations.length && src.conversations.length;
+    selectSource(src.id, target && !gotChats ? S.tab : null);
   }catch(e){ unbusy(); console.error(e); toast("Ошибка: "+e.message, 6000); }
 }
-function addSource(src){ S.sources.push(src); renderSourceSel(); }
 
 /* ============ Сохранение в браузере (IndexedDB) ============ */
 const REM_KEY="claude-viewer-remember";
@@ -569,7 +608,9 @@ async function idbDo(mode, fn){
 async function saveSource(src){
   const blobs = src.origin.map(f=>({name:f.name, type:f.type, blob:f}));
   const total = blobs.reduce((a,b)=>a+b.blob.size,0);
-  await idbDo("readwrite", st=>st.put({id:src.name+"|"+total, name:src.name, size:total, added:Date.now(), files:blobs, convCount:src.conversations.length}));
+  const id = src.saveId || (src.name+"|"+total+"|"+blobs.map(b=>b.name).join(","));
+  src.saveId = id;
+  await idbDo("readwrite", st=>st.put({id, name:src.name, size:total, added:Date.now(), files:blobs, convCount:src.conversations.length}));
   refreshSaved();
 }
 async function refreshSaved(){
@@ -582,7 +623,7 @@ async function refreshSaved(){
   for (const it of items){
     box.append(h("div",{class:"saved-item"},
       h("div",{class:"name",title:it.name},h("b",{},it.name),h("div",{class:"muted",style:"font-size:12px"},fmtSize(it.size)+" · "+(it.convCount??"?")+" "+plural(it.convCount||0,"чат","чата","чатов")+" · добавлен "+fmtDate(it.added))),
-      h("button",{class:"small primary",onclick:()=>openFiles(it.files.map(f=>new File([f.blob],f.name,{type:f.type})),{fromSaved:true})},"Открыть"),
+      h("button",{class:"small primary",onclick:async()=>{ await openFiles(it.files.map(f=>new File([f.blob],f.name,{type:f.type})),{fromSaved:true}); const s=S.sources[S.sources.length-1]; if(s) s.saveId=it.id; }},"Открыть"),
       h("button",{class:"small",title:"Удалить из браузера",onclick:async()=>{ await idbDo("readwrite",st=>st.delete(it.id)); refreshSaved(); }},"Удалить")
     ));
   }
@@ -594,11 +635,13 @@ function renderSourceSel(){
   for (const s of S.sources) sel.append(h("option",{value:s.id, selected:S.cur?.id===s.id},s.name));
   sel.classList.toggle("hidden", !S.sources.length);
 }
-function selectSource(id){
+function selectSource(id, keepTab){
   S.cur = S.sources.find(s=>s.id===id); S.sel.clear(); S.active=null;
   $("#welcome").classList.add("hidden"); $("#app").classList.remove("hidden"); $("#homeBtn").classList.remove("hidden");
   $("#sourceSel").value=id;
-  setTab(S.cur.conversations.length||!S.cur.projects.length ? "conv" : "proj");
+  $("#tabs [data-tab=dl]").classList.toggle("hidden", !S.cur.manifest);
+  if (keepTab && (keepTab!=="dl" || S.cur.manifest)) return setTab(keepTab);
+  setTab(S.cur.conversations.length ? "conv" : S.cur.manifest ? "dl" : S.cur.projects.length ? "proj" : "files");
 }
 function goHome(){ $("#welcome").classList.remove("hidden"); $("#app").classList.add("hidden"); refreshSaved(); }
 function showMain(on){ $("#app").classList.toggle("showing-main", on); if(on) window.scrollTo(0,0); }
@@ -609,14 +652,14 @@ function setTab(t){
   S.tab=t; S.active=null;
   for (const b of $("#tabs").children) b.classList.toggle("active", b.dataset.tab===t);
   renderTools(); renderList();
-  if (t==="info") showInfo(); else setMain(h("div",{class:"empty"},"Выберите элемент слева."));
-  showMain(t==="info");
+  if (t==="info") showInfo(); else if (t==="dl") showManifest(); else setMain(h("div",{class:"empty"},"Выберите элемент слева."));
+  showMain(t==="info"||t==="dl");
 }
 
 function renderTools(){
   const tools=$("#tools"); tools.innerHTML="";
   const src=S.cur;
-  if (S.tab==="info"){ tools.classList.add("hidden"); return; }
+  if (S.tab==="info"||S.tab==="dl"){ tools.classList.add("hidden"); return; }
   tools.classList.remove("hidden");
   const search=h("input",{type:"search",placeholder:S.tab==="conv"?"Поиск по названию…":"Поиск…",value:S.query,oninput:e=>{S.query=e.target.value;renderList();}});
   tools.append(h("div",{class:"row"},search));
@@ -713,11 +756,18 @@ function renderList(){
           h("div",{class:"snip",html:"из чата: "+hl(a.conv.title,q)}))));
     }
     more(arts.length);
+  } else if (S.tab==="dl"){
+    for (const f of manifestFiles(src)){
+      const st=fileStatus(src,f);
+      list.append(h("div",{class:"item",onclick:()=>{ showMain(true); document.getElementById("dl-"+f._i)?.scrollIntoView({block:"center"}); }},
+        h("div",{class:"body"},h("div",{class:"title"},catName(f.category)+(f._multi?" · часть "+(Number(f.part)+1):"")),
+          h("div",{class:"meta"},f.filename+" · "+st.label))));
+    }
   } else if (S.tab==="files"){
     const arr=src.files.filter(f=>!q||f.path.toLowerCase().includes(q));
     for (const f of arr.slice(0,LIST_LIMIT)){
       list.append(h("div",{class:"item"+(S.active===f.path?" active":""),onclick:()=>openFile(f)},
-        h("div",{class:"body"},h("div",{class:"title",html:hl(f.path,q)}),h("div",{class:"meta"},fmtSize(f.size)+(f.kind?" · "+({conversations:"чаты",projects:"проекты",users:"пользователь",memories:"память"}[f.kind]):"")))));
+        h("div",{class:"body"},h("div",{class:"title",html:hl(f.path,q)}),h("div",{class:"meta"},fmtSize(f.size)+(f.kind?" · "+({conversations:"чаты",projects:"проекты",users:"пользователь",memories:"память",manifest:"ссылки на архивы"}[f.kind]||""):"")))));
     }
     more(arr.length);
   }
@@ -936,7 +986,7 @@ function openProject(p){
 }
 
 /* ----- Файлы архива ----- */
-const TEXT_EXT=/\.(json|txt|md|csv|tsv|html?|xml|js|jsx|ts|tsx|py|css|log|yaml|yml|svg|sh|sql)$/i;
+const TEXT_EXT=/\.(jsonl|ndjson|json|txt|md|csv|tsv|html?|xml|js|jsx|ts|tsx|py|css|log|yaml|yml|svg|sh|sql)$/i;
 const IMG_EXT=/\.(png|jpe?g|gif|webp|bmp)$/i;
 async function openFile(f){
   S.active=f.path; renderList();
@@ -954,10 +1004,83 @@ async function openFile(f){
       let t = f.json!==undefined ? JSON.stringify(f.json,null,2) : await f.text();
       const LIM=300000; const cut=t.length>LIM;
       if (ext==="md") box.append(h("div",{class:"md",html:renderMd(t.slice(0,LIM))}));
-      else box.append(h("div",{class:"md"},h("pre",{},h("code",{},t.slice(0,LIM)))));
+      else box.append(h("div",{class:"md"},h("pre",{},h("code",{html:linkify(esc(t.slice(0,LIM)))}))));
       if (cut) box.append(h("p",{class:"muted"},"Показано начало файла ("+fmtSize(LIM)+"). Полностью — в скачанном файле."));
     } else box.append(h("p",{class:"muted"},"Предпросмотр недоступен для этого типа файла. Его можно скачать."));
   }catch(e){ box.innerHTML=""; box.append(h("p",{style:"color:var(--warn)"},"Ошибка: "+e.message)); }
+}
+
+/* ----- Манифест из письма: ссылки на архивы ----- */
+const CAT_RU = {
+  conversations:["Чаты","переписка со всеми сообщениями и артефактами"],
+  projects:["Проекты","описания, инструкции и документы проектов"],
+  memories:["Память","что Claude запомнил о вас"],
+  light_metadata:["Основные сведения","аккаунт и краткие данные"],
+  users:["Аккаунт","данные пользователя"],
+  feedback:["Отзывы","ваши оценки ответов (лайки/дизлайки)"],
+  frames:["Frames",""],
+  claude_code_cloud:["Claude Code в облаке","сессии Claude Code на claude.ai"]
+};
+const catName = c => CAT_RU[c]?.[0] || String(c||"Файл").replace(/_/g," ");
+function manifestFiles(src){
+  const arr = (src.manifest?.data_files||[]).filter(f=>f&&typeof f==="object").map((f,i)=>({...f,_i:i}));
+  const per = {}; arr.forEach(f=>per[f.category]=(per[f.category]||0)+1);
+  arr.forEach(f=>f._multi=per[f.category]>1);
+  return arr;
+}
+const CLICK_KEY="claude-viewer-clicked";
+function clicked(){ try{ return JSON.parse(localStorage.getItem(CLICK_KEY)||"{}"); }catch(_){ return {}; } }
+function markClicked(url){ try{ const c=clicked(); c[url]=Date.now(); localStorage.setItem(CLICK_KEY, JSON.stringify(c)); }catch(_){} }
+function fileStatus(src,f){
+  const stem=String(f.filename||"").replace(/\.zip$/i,"");
+  const loaded = stem && (src.origin||[]).some(o=>o.name===f.filename || (o.name.startsWith(stem) && isZip(o)));
+  if (loaded) return {code:"loaded",label:"✓ открыт здесь"};
+  if (clicked()[f.export_url]) return {code:"clicked",label:"ссылка открывалась"};
+  return {code:"none",label:"не скачан"};
+}
+function showManifest(){
+  const src=S.cur, man=src.manifest; if(!man) return;
+  const files=manifestFiles(src);
+  const created=new Date(man.created_at); const exp=isNaN(created)?null:new Date(created.getTime()+24*3600e3);
+  const left = exp ? exp.getTime()-Date.now() : null;
+  let expText="";
+  if (left!=null){
+    if (left<=0) expText="Срок действия ссылок истёк "+fmtDate(exp)+". Если что-то не успели скачать, запросите экспорт заново в настройках claude.ai.";
+    else { const hh=Math.floor(left/3600e3), mm=Math.floor(left%3600e3/60e3); expText="Ссылки действуют до "+fmtDate(exp)+" (осталось "+(hh?hh+" ч ":"")+mm+" мин)."; }
+  }
+  const tbody=h("tbody",{});
+  for (const f of files){
+    const st=fileStatus(src,f); const url=String(f.export_url||"");
+    const okUrl=/^https:\/\//i.test(url);
+    const stEl=h("span",{class:st.code==="loaded"?"":"muted",style:st.code==="loaded"?"color:var(--ok);font-weight:600":""},st.label);
+    tbody.append(h("tr",{id:"dl-"+f._i},
+      h("td",{},h("b",{},catName(f.category)+(f._multi?" · часть "+(Number(f.part)+1):"")),h("div",{class:"muted",style:"font-size:12px"},CAT_RU[f.category]?.[1]||"")),
+      h("td",{style:"overflow-wrap:anywhere;font-size:13px"},f.filename||""),
+      h("td",{},stEl),
+      h("td",{style:"white-space:nowrap"},okUrl?h("a",{href:url,target:"_blank",rel:"noopener noreferrer",class:"btnlink",onclick:()=>{ markClicked(url); setTimeout(()=>{ if(fileStatus(src,f).code!=="loaded") stEl.textContent="ссылка открывалась"; },50); }},"Скачать ↗"):h("span",{class:"muted"},"нет ссылки"))));
+  }
+  const loadedCount = files.filter(f=>fileStatus(src,f).code==="loaded").length;
+  const view=h("div",{class:"view"},backBtn(),
+    h("h2",{},"Архивы экспорта"),
+    h("div",{class:"muted",style:"font-size:13px"},"Экспорт создан "+fmtDate(man.created_at)+" · "+files.length+" "+plural(files.length,"архив","архива","архивов")+" · открыто здесь: "+loadedCount),
+    expText?h("div",{class:"card",style:left<=0?"border-color:var(--warn)":""},
+      h("div",{},expText),
+      h("div",{class:"muted",style:"font-size:13px;margin-top:6px"},"Ссылка может перестать работать после первого использования, поэтому дождитесь, пока архив скачается полностью. Для скачивания нужно быть залогиненным на claude.ai в этом браузере.")):null,
+    h("div",{class:"card"},
+      h("h3",{},"1. Скачайте нужные архивы"),
+      h("div",{style:"overflow:auto"},h("table",{class:"dltable"},
+        h("thead",{},h("tr",{},h("th",{},"Что внутри"),h("th",{},"Файл"),h("th",{},"Статус"),h("th",{},""))),tbody))),
+    h("div",{class:"card"},
+      h("h3",{},"2. Добавьте скачанные архивы сюда"),
+      h("p",{class:"muted",style:"margin-top:0"},"Выберите сразу все скачанные ZIP-файлы (или перетащите их в окно). Распаковывать не нужно: всё откроется вместе с этим списком, и появятся чаты, проекты и остальное."),
+      h("button",{class:"primary",onclick:()=>$("#addInput").click()},"Добавить скачанные архивы…")),
+    man.instructions?h("details",{class:"block"},h("summary",{},"Оригинальная инструкция из файла"),h("div",{},man.instructions)):null
+  );
+  setMain(view);
+}
+
+function linkify(escaped){
+  return escaped.replace(/https?:\/\/(?:[^\s<&"]|&amp;)+/g, u=>`<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
 }
 
 /* ----- Сведения ----- */
@@ -1000,8 +1123,11 @@ function memoriesCard(mem){
 
 /* ============ События ============ */
 const fi=$("#fileInput");
-$("#openBtn").onclick=$("#openBtn2").onclick=()=>fi.click();
+$("#openBtn2").onclick=()=>fi.click();
+$("#openBtn").onclick=()=>{ const inApp=!$("#app").classList.contains("hidden") && S.cur?.manifest; (inApp?$("#addInput"):fi).click(); };
 fi.onchange=()=>{ openFiles(fi.files); fi.value=""; };
+const ai=$("#addInput");
+ai.onchange=()=>{ if(S.cur) openFiles(ai.files,{into:S.cur}); else openFiles(ai.files); ai.value=""; };
 $("#homeBtn").onclick=goHome;
 $("#sourceSel").onchange=e=>selectSource(e.target.value);
 $("#tabs").onclick=e=>{ const t=e.target.closest("button")?.dataset.tab; if(t){ S.query=""; setTab(t);} };
@@ -1016,7 +1142,13 @@ const rc=$("#rememberChk"); rc.checked=remember(); rc.onchange=()=>setRemember(r
 const drop=$("#drop");
 ["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
 ["dragleave","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop"||e.target===document.documentElement)drop.classList.remove("over");}));
-document.addEventListener("drop",e=>{ if(e.dataTransfer?.files?.length) openFiles(e.dataTransfer.files); });
+document.addEventListener("drop",e=>{
+  if(!e.dataTransfer?.files?.length) return;
+  const inApp = !$("#app").classList.contains("hidden") && S.cur;
+  // если открыт список архивов из письма, скачанные ZIP добавляются к нему
+  if (inApp && S.cur.manifest) openFiles(e.dataTransfer.files,{into:S.cur});
+  else openFiles(e.dataTransfer.files);
+});
 refreshSaved();
 </script>
 </body>
