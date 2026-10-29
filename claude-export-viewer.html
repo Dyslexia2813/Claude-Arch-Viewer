@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Просмотр экспорта Claude</title>
+<meta name="theme-color" content="#c96442">
+<script>
+// Манифест приложения подключаем только при открытии по http(s): с диска он не нужен
+if (/^https?:$/.test(location.protocol)) document.write('<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">');
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23c96442'/%3E%3Crect x='14' y='22' width='36' height='28' rx='4' fill='%23fff'/%3E%3Cpath d='M12 16h40v8H12z' fill='%23fbe9e2'/%3E%3Crect x='26' y='30' width='12' height='4' rx='2' fill='%23c96442'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -154,6 +159,7 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
   <select id="sourceSel" class="hidden" title="Открытый архив"></select>
   <span class="grow"></span>
   <button id="openBtn" class="primary">Открыть файл…</button>
+  <button id="installBtn" class="hidden" title="Установить как приложение (Edge, Chrome)">Установить приложение</button>
   <button id="homeBtn" class="hidden" title="К списку архивов">Архивы</button>
   <select id="themeSel" title="Тема оформления">
     <option value="">Тема: авто</option>
@@ -179,6 +185,11 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
       <input type="checkbox" id="rememberChk"> Запоминать открытые архивы в этом браузере
     </label>
     <div id="savedList" class="muted">Пока ничего не сохранено.</div>
+  </div>
+
+  <div class="card" id="appCard">
+    <h3>Как приложение</h3>
+    <p style="margin:0" id="appHint">Откройте страницу по адресу <a href="https://dyslexia2813.github.io/Claude-Arch-Viewer/" target="_blank" rel="noopener">dyslexia2813.github.io/Claude-Arch-Viewer</a> в Edge и нажмите «Установить приложение» вверху (или значок установки в адресной строке). После этого она будет открываться отдельным окном, работать без интернета и открывать ZIP/JSON двойным щелчком.</p>
   </div>
 
   <div class="card">
@@ -1187,6 +1198,34 @@ document.addEventListener("drop",e=>{
   else openFiles(e.dataTransfer.files);
 });
 refreshSaved();
+
+/* ============ Установка как приложение (PWA) ============ */
+// Работает, когда страница открыта по https (например, через GitHub Pages).
+// При открытии файла с диска (file://) установка браузером не поддерживается.
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+  navigator.serviceWorker.register("sw.js").catch(e=>console.warn("Service worker:", e));
+}
+let installEvt=null;
+const installBtn=$("#installBtn");
+window.addEventListener("beforeinstallprompt", e=>{ e.preventDefault(); installEvt=e; installBtn.classList.remove("hidden"); });
+installBtn.onclick=async()=>{
+  if (!installEvt) return;
+  installEvt.prompt();
+  try{ await installEvt.userChoice; }catch(_){}
+  installEvt=null; installBtn.classList.add("hidden");
+};
+if (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches) $("#appCard").classList.add("hidden");
+else if (/^https?:$/.test(location.protocol)) $("#appHint").textContent="Нажмите «Установить приложение» вверху или значок установки в адресной строке Edge. Приложение будет открываться отдельным окном, работать без интернета и открывать ZIP/JSON двойным щелчком.";
+window.addEventListener("appinstalled", ()=>{ installBtn.classList.add("hidden"); toast("Приложение установлено"); });
+// Открытие ZIP/JSON двойным щелчком, когда приложение установлено
+if ("launchQueue" in window){
+  launchQueue.setConsumer(async params=>{
+    if (!params.files?.length) return;
+    const files = await Promise.all(params.files.map(h=>h.getFile()));
+    const inApp = !$("#app").classList.contains("hidden") && S.cur?.manifest;
+    openFiles(files, inApp ? {into:S.cur} : {});
+  });
+}
 </script>
 </body>
 </html>
