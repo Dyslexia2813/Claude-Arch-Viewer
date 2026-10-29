@@ -13,12 +13,17 @@
   --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
+  :root:not([data-theme="light"]):not([data-theme="teal"]){
     --bg:#1c1b19; --panel:#262522; --panel2:#2f2d29; --text:#ecebe6; --muted:#a3a097;
     --border:#3b3934; --accent:#e07a55; --accent2:#f0936f; --human:#2a2f38; --assistant:#262522;
     --code:#1f1e1b; --warn:#f08a6a; --ok:#6fcf97; --sel:#3d2b24;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
   }
+}
+:root[data-theme="teal"]{
+  --bg:#e8f6f4; --panel:#f5fcfb; --panel2:#dbefec; --text:#163533; --muted:#52706c; --border:#bddcd8; --accent:#138a83; --accent2:#0d6f69; --human:#d6eeeb; --assistant:#f5fcfb;
+  --code:#e0f1ee; --warn:#b5482a; --ok:#1d7a4a; --sel:#c6e9e4;
+  --shadow:0 1px 2px rgba(10,60,55,.07),0 4px 16px rgba(10,60,55,.06);
 }
 :root[data-theme="dark"]{
   --bg:#1c1b19; --panel:#262522; --panel2:#2f2d29; --text:#ecebe6; --muted:#a3a097;
@@ -28,7 +33,7 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+body{margin:0;display:flex;flex-direction:column;height:100vh;overflow:auto;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 12px}
 button:hover{border-color:var(--accent)}
@@ -58,12 +63,15 @@ header.top select{max-width:260px}
 .saved-item .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 ol.howto{margin:0;padding-left:20px}
 
-#app{display:flex;height:calc(100vh - 56px);min-height:0}
-#side{width:360px;min-width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--panel)}
+#app{display:flex;flex:1;min-height:0}
+#side{width:360px;min-width:220px;flex:0 0 auto;display:flex;flex-direction:column;background:var(--panel)}
 #main{flex:1;min-width:0;overflow:auto}
-.tabs{display:flex;gap:2px;padding:8px 8px 0;border-bottom:1px solid var(--border);overflow-x:auto}
-.tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:6px 8px;white-space:nowrap;color:var(--muted)}
-.tabs button.active{border-bottom-color:var(--accent);color:var(--text);font-weight:600}
+.tabbar{padding:10px 10px 0}
+.tabbar select{width:100%;font-weight:600;padding:7px 10px}
+#split{flex:0 0 6px;cursor:col-resize;background:transparent;border-left:1px solid var(--border);margin-left:-1px;position:relative;touch-action:none}
+#split:hover,#split.drag{background:var(--accent);opacity:.5}
+body.resizing{cursor:col-resize;user-select:none}
+body.resizing iframe{pointer-events:none}
 .side-tools{padding:10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border)}
 .side-tools .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .side-tools input[type=search]{flex:1}
@@ -125,8 +133,10 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
 .back{display:none}
 
 @media (max-width:760px){
-  #app{height:auto;min-height:calc(100vh - 56px);display:block}
-  #side{width:100%;border-right:none;height:calc(100vh - 56px)}
+  #app{display:block;flex:none}
+  #side{width:100%!important;border-right:none}
+  .list{overflow:visible}
+  #split{display:none}
   #main{overflow:visible}
   #app.showing-main #side{display:none}
   #app:not(.showing-main) #main{display:none}
@@ -145,7 +155,12 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
   <span class="grow"></span>
   <button id="openBtn" class="primary">Открыть файл…</button>
   <button id="homeBtn" class="hidden" title="К списку архивов">Архивы</button>
-  <button id="themeBtn" title="Сменить тему">Тема</button>
+  <select id="themeSel" title="Тема оформления">
+    <option value="">Тема: авто</option>
+    <option value="light">Светлая</option>
+    <option value="dark">Тёмная</option>
+    <option value="teal">Бирюзовая</option>
+  </select>
   <input id="fileInput" type="file" accept=".json,.jsonl,.zip,application/json,application/zip" multiple class="hidden">
   <input id="addInput" type="file" accept=".json,.jsonl,.zip,application/json,application/zip" multiple class="hidden">
 </header>
@@ -178,17 +193,11 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
 
 <section id="app" class="hidden">
   <aside id="side">
-    <div class="tabs" id="tabs">
-      <button data-tab="dl" class="hidden">Скачать архивы</button>
-      <button data-tab="conv" class="active">Чаты</button>
-      <button data-tab="proj">Проекты</button>
-      <button data-tab="art">Артефакты</button>
-      <button data-tab="files">Файлы</button>
-      <button data-tab="info">Сведения</button>
-    </div>
+    <div class="tabbar"><select id="tabSel" title="Раздел"></select></div>
     <div class="side-tools" id="tools"></div>
     <div class="list" id="list"></div>
   </aside>
+  <div id="split" title="Потяните, чтобы изменить ширину. Двойной щелчок — по умолчанию."></div>
   <main id="main"><div class="empty">Выберите элемент слева.</div></main>
 </section>
 
@@ -639,18 +648,30 @@ function selectSource(id, keepTab){
   S.cur = S.sources.find(s=>s.id===id); S.sel.clear(); S.active=null;
   $("#welcome").classList.add("hidden"); $("#app").classList.remove("hidden"); $("#homeBtn").classList.remove("hidden");
   $("#sourceSel").value=id;
-  $("#tabs [data-tab=dl]").classList.toggle("hidden", !S.cur.manifest);
+  renderTabSel();
   if (keepTab && (keepTab!=="dl" || S.cur.manifest)) return setTab(keepTab);
   setTab(S.cur.conversations.length ? "conv" : S.cur.manifest ? "dl" : S.cur.projects.length ? "proj" : "files");
 }
 function goHome(){ $("#welcome").classList.remove("hidden"); $("#app").classList.add("hidden"); refreshSaved(); }
-function showMain(on){ $("#app").classList.toggle("showing-main", on); if(on) window.scrollTo(0,0); }
+function showMain(on){ $("#app").classList.toggle("showing-main", on); if(on){ window.scrollTo(0,0); document.body.scrollTop=0; } }
 function setMain(...nodes){ const m=$("#main"); m.innerHTML=""; m.scrollTop=0; m.append(...nodes); }
 function backBtn(){ return h("button",{class:"back small",onclick:()=>showMain(false)},"← Назад"); }
 
+function renderTabSel(){
+  const src=S.cur, sel=$("#tabSel"); sel.innerHTML="";
+  const n=x=>x?" ("+x+")":"";
+  const opts=[
+    src.manifest?["dl","Скачать архивы"+n((src.manifest.data_files||[]).length)]:null,
+    ["conv","Чаты"+n(src.conversations.length)],
+    ["proj","Проекты"+n(src.projects.length)],
+    ["art","Артефакты"],
+    ["files","Файлы архива"+n(src.files.length)],
+    ["info","Сведения"]].filter(Boolean);
+  for (const [v,l] of opts) sel.append(h("option",{value:v},l));
+}
 function setTab(t){
   S.tab=t; S.active=null;
-  for (const b of $("#tabs").children) b.classList.toggle("active", b.dataset.tab===t);
+  $("#tabSel").value=t;
   renderTools(); renderList();
   if (t==="info") showInfo(); else if (t==="dl") showManifest(); else setMain(h("div",{class:"empty"},"Выберите элемент слева."));
   showMain(t==="info"||t==="dl");
@@ -1130,14 +1151,30 @@ const ai=$("#addInput");
 ai.onchange=()=>{ if(S.cur) openFiles(ai.files,{into:S.cur}); else openFiles(ai.files); ai.value=""; };
 $("#homeBtn").onclick=goHome;
 $("#sourceSel").onchange=e=>selectSource(e.target.value);
-$("#tabs").onclick=e=>{ const t=e.target.closest("button")?.dataset.tab; if(t){ S.query=""; setTab(t);} };
+$("#tabSel").onchange=e=>{ S.query=""; setTab(e.target.value); };
 const THEME_KEY="claude-viewer-theme";
 function applyTheme(t){ if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme; }
-try{ applyTheme(localStorage.getItem(THEME_KEY)); }catch(_){}
-$("#themeBtn").onclick=()=>{
-  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  const t=dark?"light":"dark"; applyTheme(t); try{localStorage.setItem(THEME_KEY,t)}catch(_){}
-};
+const themeSel=$("#themeSel");
+try{ const t=localStorage.getItem(THEME_KEY)||""; applyTheme(t); themeSel.value=t; }catch(_){}
+themeSel.onchange=()=>{ const t=themeSel.value; applyTheme(t); try{localStorage.setItem(THEME_KEY,t)}catch(_){} };
+
+/* Перетаскиваемая граница между панелями */
+const SPLIT_KEY="claude-viewer-side-width", side=$("#side"), split=$("#split");
+const clampW=w=>Math.max(220, Math.min(w, Math.max(260, window.innerWidth*0.7)));
+try{ const w=+localStorage.getItem(SPLIT_KEY); if(w) side.style.width=clampW(w)+"px"; }catch(_){}
+split.addEventListener("pointerdown",e=>{
+  e.preventDefault(); split.setPointerCapture(e.pointerId);
+  const startX=e.clientX, startW=side.getBoundingClientRect().width;
+  document.body.classList.add("resizing"); split.classList.add("drag");
+  const move=ev=>{ side.style.width=clampW(startW+ev.clientX-startX)+"px"; };
+  const up=()=>{ split.removeEventListener("pointermove",move); split.removeEventListener("pointerup",up); split.removeEventListener("pointercancel",up);
+    document.body.classList.remove("resizing"); split.classList.remove("drag");
+    try{ localStorage.setItem(SPLIT_KEY, parseInt(side.style.width)); }catch(_){} };
+  split.addEventListener("pointermove",move); split.addEventListener("pointerup",up); split.addEventListener("pointercancel",up);
+});
+split.addEventListener("dblclick",()=>{ side.style.width=""; try{ localStorage.removeItem(SPLIT_KEY); }catch(_){} });
+split.addEventListener("keydown",e=>{ if(e.key==="ArrowLeft"||e.key==="ArrowRight"){ side.style.width=clampW(side.getBoundingClientRect().width+(e.key==="ArrowLeft"?-20:20))+"px"; try{ localStorage.setItem(SPLIT_KEY, parseInt(side.style.width)); }catch(_){} } });
+split.tabIndex=0;
 const rc=$("#rememberChk"); rc.checked=remember(); rc.onchange=()=>setRemember(rc.checked);
 const drop=$("#drop");
 ["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
