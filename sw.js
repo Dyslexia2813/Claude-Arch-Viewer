@@ -1,6 +1,6 @@
 // Офлайн-кэш для установленного приложения.
 // Сначала отдаём из кэша, параллельно обновляем кэш из сети.
-const CACHE = "claude-export-viewer-v1";
+const CACHE = "claude-export-viewer-v2";
 const SHELL = [
   "./",
   "./claude-export-viewer.html",

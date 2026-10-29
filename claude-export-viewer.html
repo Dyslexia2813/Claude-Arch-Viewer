@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Просмотр экспорта Claude</title>
-<meta name="theme-color" content="#c96442">
+<meta name="theme-color" content="#ffffff">
 <script>
 // Манифест приложения подключаем только при открытии по http(s): с диска он не нужен
 if (/^https?:$/.test(location.protocol)) document.write('<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">');
@@ -136,6 +136,17 @@ img.preview{max-width:100%;border:1px solid var(--border);border-radius:8px}
 .progress{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:40}
 .progress div{background:var(--panel);padding:20px 28px;border-radius:12px;box-shadow:var(--shadow)}
 .back{display:none}
+
+/* Установленное приложение: шапка становится заголовком окна, кнопки окна (свернуть/закрыть) её не перекрывают */
+@media (display-mode: window-controls-overlay){
+  header.top{
+    padding-left:calc(env(titlebar-area-x, 0px) + 16px);
+    padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+    min-height:env(titlebar-area-height, 33px);
+    -webkit-app-region:drag; app-region:drag;
+  }
+  header.top button, header.top select, header.top input, header.top a{-webkit-app-region:no-drag; app-region:no-drag}
+}
 
 @media (max-width:760px){
   #app{display:block;flex:none}
@@ -1164,7 +1175,16 @@ $("#homeBtn").onclick=goHome;
 $("#sourceSel").onchange=e=>selectSource(e.target.value);
 $("#tabSel").onchange=e=>{ S.query=""; setTab(e.target.value); };
 const THEME_KEY="claude-viewer-theme";
-function applyTheme(t){ if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme; }
+function applyTheme(t){
+  if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme;
+  syncTitleColor();
+}
+// цвет заголовка окна приложения = цвет шапки
+function syncTitleColor(){
+  const c=getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
+  const m=document.querySelector('meta[name="theme-color"]'); if(m && c) m.content=c;
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", syncTitleColor);
 const themeSel=$("#themeSel");
 try{ const t=localStorage.getItem(THEME_KEY)||""; applyTheme(t); themeSel.value=t; }catch(_){}
 themeSel.onchange=()=>{ const t=themeSel.value; applyTheme(t); try{localStorage.setItem(THEME_KEY,t)}catch(_){} };
